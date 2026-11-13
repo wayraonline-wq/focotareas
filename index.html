@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Foco de Tareas</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    /* Diseño minimalista, retro y de bajo contraste */
+    body { background-color: #121212; color: #a8b5a2; font-family: monospace; padding: 20px; text-align: center; margin: 0; }
+    input, button { background: #1e1e1e; border: 1px solid #444; color: #a8b5a2; padding: 12px; margin: 5px; border-radius: 2px; font-family: monospace; font-size: 16px; width: 90%; max-width: 400px; }
+    button { cursor: pointer; border-color: #a8b5a2; font-weight: bold; }
+    button:hover { background: #2a2a2a; }
+    #task-display { font-size: 1.5em; margin: 40px auto; padding: 30px; border: 1px dashed #555; background: #1a1a1a; display: none; max-width: 500px; }
+    .hidden { display: none !important; }
+    ul { list-style-type: none; padding: 0; text-align: left; font-size: 0.8em; }
+    li { margin: 15px 0; padding: 10px; background: #222; border-left: 3px solid #555; }
+    #setup-api { margin-bottom: 30px; font-size: 0.8em; border-bottom: 1px solid #333; padding-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <h2>FOCO DE TAREAS</h2>
+  
+  <div id="setup-api">
+    <p>Para la división de tareas, ingresa tu API Key gratuita de Gemini:</p>
+    <input type="password" id="api-key" placeholder="Pega aquí la clave API...">
+    <button onclick="saveKey()">Guardar Clave</button>
+  </div>
+
+  <div id="add-task-section">
+    <input type="text" id="new-task" placeholder="Escribe una tarea o hábito...">
+    <button onclick="addTask()">Añadir a la lista</button>
+  </div>
+
+  <p id="task-count">Tareas en cola: 0</p>
+  <button id="start-btn" onclick="startTasks()">INICIAR RUTINA</button>
+
+  <div id="task-display">
+    <p>TAREA ACTUAL:</p>
+    <div id="current-task-text" style="margin-bottom: 30px; font-weight: bold; color: #d1dcd1;"></div>
+    
+    <button onclick="completeTask()">LISTO (Siguiente)</button>
+    <button onclick="splitTask()">Desglosar con IA</button>
+    
+    <ul id="subtasks-list"></ul>
+  </div>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+
+    let tasks = JSON.parse(localStorage.getItem('foco_tasks')) || [];
+    let apiKey = localStorage.getItem('foco_geminiKey') || '';
+
+    if(apiKey) document.getElementById('setup-api').classList.add('hidden');
+
+    function saveKey() {
+      apiKey = document.getElementById('api-key').value;
+      if(apiKey) {
+        localStorage.setItem('foco_geminiKey', apiKey);
+        document.getElementById('setup-api').classList.add('hidden');
+      }
+    }
+
+    function updateCount() {
+      document.getElementById('task-count').innerText = `Tareas en cola: ${tasks.length}`;
+      localStorage.setItem('foco_tasks', JSON.stringify(tasks));
+    }
+
+    function addTask() {
+      const input = document.getElementById('new-task');
+      if(input.value.trim() === '') return;
+      tasks.push(input.value.trim());
+      input.value = '';
+      updateCount();
+    }
+
+    function startTasks() {
+      if(tasks.length === 0) return alert('La lista está vacía.');
+      document.getElementById('add-task-section').classList.add('hidden');
+      document.getElementById('start-btn').classList.add('hidden');
+      document.getElementById('task-display').style.display = 'block';
+      showCurrentTask();
+    }
+
+    function showCurrentTask() {
+      if(tasks.length === 0) {
+        document.getElementById('task-display').style.display = 'none';
+        document.getElementById('add-task-section').classList.remove('hidden');
+        document.getElementById('start-btn').classList.remove('hidden');
+        alert('¡Has completado todo por ahora!');
+        return;
+      }
+      document.getElementById('current-task-text').innerText = tasks[0];
+      document.getElementById('subtasks-list').innerHTML = '';
+    }
+
+    function completeTask() {
+      tasks.shift();
+      updateCount();
+      showCurrentTask();
+    }
+
+    async function splitTask() {
+      if(!apiKey) {
+        document.getElementById('setup-api').classList.remove('hidden');
+        return alert('Configura la clave API de IA primero.');
+      }
+      
+      const listEl = document.getElementById('subtasks-list');
+      listEl.innerHTML = '<li>Procesando simplificación...</li>';
+      
+      const promptText = `Eres un asistente para una persona autista. Divide la siguiente tarea en 3 o 4 pasos muy simples, cortos y literales. No des explicaciones, saludos ni conclusiones. Solo devuelve los pasos numerados. Tarea: ${tasks[0]}`;
+      
+      try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] })
+        });
+        
+        const data = await response.json();
+        if(data.error) throw new Error(data.error.message);
+        
+        const text = data.candidates[0].content.parts[0].text;
+        const steps = text.split('\n').filter(s => s.trim() !== '');
+        
+        listEl.innerHTML = '';
+        steps.forEach(step => {
+          const li = document.createElement('li');
+          li.innerText = step.replace(/^[0-9*.-]+\s*/, ''); 
+          listEl.appendChild(li);
+        });
+      } catch(e) {
+        listEl.innerHTML = '<li>Error al conectar. Verifica tu conexión y la clave API.</li>';
+      }
+    }
+
+    updateCount();
+  </script>
+</body>
+</html>
