@@ -17,31 +17,29 @@
     #setup-api { margin-bottom: 30px; font-size: 0.8em; border-bottom: 1px solid #333; padding-bottom: 20px; }
     .checkbox-container { display: flex; align-items: center; justify-content: center; margin: 15px 0; font-size: 0.9em; }
     .checkbox-container input { width: auto; margin-right: 10px; transform: scale(1.5); }
+    .reset-btn { font-size: 0.7em; margin-top: 30px; background: transparent; border: none; text-decoration: underline; color: #555; }
   </style>
 </head>
 <body>
   <h2>FOCO DE TAREAS</h2>
   
   <div id="setup-api">
-    <p>Ingresa tu API Key de Gemini (Solo la primera vez):</p>
-    <input type="password" id="api-key" placeholder="Pega la clave API...">
+    <p>Ingresa tu API Key de Gemini:</p>
+    <input type="password" id="api-key" placeholder="Pega la clave API exacta...">
     <button onclick="saveKey()">Guardar Clave</button>
   </div>
 
   <div id="add-task-section">
     <input type="text" id="new-task" placeholder="Escribe una tarea o hábito...">
-    
     <select id="task-priority">
       <option value="1">Prioridad Alta (Hacer primero)</option>
       <option value="2" selected>Prioridad Media</option>
       <option value="3">Prioridad Baja (Hacer después)</option>
     </select>
-
     <div class="checkbox-container">
       <input type="checkbox" id="auto-split">
       <label for="auto-split">Subdividir automáticamente con IA</label>
     </div>
-
     <button onclick="addTask()">Añadir a la cola</button>
   </div>
 
@@ -58,12 +56,13 @@
     <ul id="subtasks-list"></ul>
   </div>
 
+  <button class="reset-btn" onclick="resetKey()">[ Cambiar API Key ]</button>
+
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js');
     }
 
-    // Usamos una nueva clave de memoria para no chocar con las tareas viejas
     let tasks = JSON.parse(localStorage.getItem('foco_tasks_v2')) || [];
     let apiKey = localStorage.getItem('foco_geminiKey') || '';
 
@@ -74,7 +73,13 @@
       if(apiKey) {
         localStorage.setItem('foco_geminiKey', apiKey);
         document.getElementById('setup-api').classList.add('hidden');
+        alert("Clave guardada correctamente.");
       }
+    }
+
+    function resetKey() {
+      localStorage.removeItem('foco_geminiKey');
+      location.reload();
     }
 
     function updateCount() {
@@ -89,13 +94,7 @@
       
       if(input.value.trim() === '') return;
       
-      tasks.push({
-        text: input.value.trim(),
-        priority: priority,
-        autoSplit: autoSplit
-      });
-      
-      // Ordena automáticamente: Prioridad 1 arriba, 3 abajo
+      tasks.push({ text: input.value.trim(), priority: priority, autoSplit: autoSplit });
       tasks.sort((a, b) => a.priority - b.priority);
       
       input.value = '';
@@ -159,7 +158,10 @@
         });
         
         const data = await response.json();
-        if(data.error) throw new Error(data.error.message);
+        
+        if(data.error) {
+          throw new Error(data.error.message);
+        }
         
         const text = data.candidates[0].content.parts[0].text;
         const steps = text.split('\n').filter(s => s.trim() !== '');
@@ -171,7 +173,8 @@
           listEl.appendChild(li);
         });
       } catch(e) {
-        listEl.innerHTML = '<li>Error de IA. Revisa tu internet o la clave.</li>';
+        // Ahora mostrará el motivo exacto del error en pantalla
+        listEl.innerHTML = `<li style="color:#ff6666;">Error técnico: ${e.message}</li>`;
         document.getElementById('manual-split-btn').classList.remove('hidden');
       }
     }
